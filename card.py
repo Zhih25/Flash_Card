@@ -1,7 +1,7 @@
 import tkinter as tk
 import os
 import random
-
+import re
 
 class VocabularySystem:
     def __init__(self, root):
@@ -10,32 +10,37 @@ class VocabularySystem:
         self.root.geometry("800x400")            #window size
         self.root.config(bg="black")             #window background color
 
-        # 狀態變數
+        # state variables
         self.word_list = []
         self.current_card = {}
         self.current_file = ""
         self.showing_translation = False
         self.mistake_buffer = {}
+        self.mistake_buffer_ch = {}
         self.file_name = ""
+        self.is_in_review = False
+        self.buffer_length = 1
 
-        # 初始化主選單
+        # initial setup
         self.show_main_menu()
 
-    # 解析 Markdown 文件
+    # parse markdown file
     def parse_md_file(self, filename):
         words = []
+        self.is_in_review = bool(re.search(r'_mistakes\.md$', filename))
         try:
             with open(filename, "r", encoding="utf-8") as file:
-                lines = file.readlines()
+                lines = file.readlines()[2:]
                 for line in lines:
-                    if line.strip() == "" or line.startswith("|---"):
-                        continue
                     if "|" in line:
                         columns = line.strip().split("|")
                         if len(columns) >= 3:
                             word = columns[1].strip()
                             translation = columns[2].strip()
-                            words.append({"word": word, "translation": translation})
+                            times=0
+                            if len(columns)==4:
+                                times=columns[3].strip()
+                            words.append({"word": word, "translation": translation, "times":times})
         except Exception as e:
             print(f"Error reading file {filename}: {e}")
         return words
@@ -69,6 +74,7 @@ class VocabularySystem:
         self.current_file = filename
         if self.word_list:
             self.show_flashcard()
+
         else:
             tk.Label(
                 self.root,
@@ -108,10 +114,15 @@ class VocabularySystem:
             fg="white"
         )
         self.translation_label.pack(pady=10)
-
-        self.root.bind("<space>", self.add_to_mistake_buffer)
-        self.root.bind("<Escape>", lambda event: self.show_main_menu())
-        self.root.bind("<Return>", self.toggle_translation_or_next)
+        if self.is_in_review:
+            self.root.bind("<Up>",self.add_to_correct_buffer)
+            self.root.bind("<Down>",self.add_to_mistake_buffer)
+            self.root.bind("<Escape>", lambda event: self.show_main_menu())
+            self.root.bind("<Return>", self.toggle_translation_or_next)
+        else:
+            self.root.bind("<Down>",self.add_to_mistake_buffer)
+            self.root.bind("<Escape>", lambda event: self.show_main_menu())
+            self.root.bind("<Return>", self.toggle_translation_or_next)
 
     # 切換顯示翻譯或下一張
     def toggle_translation_or_next(self, event=None):
@@ -121,46 +132,77 @@ class VocabularySystem:
             self.translation_label.config(text=self.current_card["translation"])
             self.showing_translation = True
 
-    # 新增至緩衝區
+    # add to mistake times
     def add_to_mistake_buffer(self, event=None):
         word = self.current_card["word"]
-        translation = self.current_card["translation"]
-
+        self.mistake_buffer_ch[word] = self.current_card["translation"]
         if word not in self.mistake_buffer:
-            self.mistake_buffer[word] = translation
+            self.mistake_buffer[word] = 1
+        else:
+            self.mistake_buffer[word] += 1
 
-        if len(self.mistake_buffer) >= 5:
+        if len(self.mistake_buffer) >= self.buffer_length:
+            self.update_mistake_file()
+
+        self.show_flashcard()
+    
+    # add to correct times
+    def add_to_correct_buffer(self, event=None):
+        word = self.current_card["word"]
+        self.mistake_buffer_ch[word] = self.current_card["translation"]
+        times=self.current_card["times"]
+        if word not in self.mistake_buffer:
+            self.mistake_buffer[word] = -1
+        else:
+            self.mistake_buffer[word] -= 1
+
+        if len(self.mistake_buffer) >= self.buffer_length:
             self.update_mistake_file()
 
         self.show_flashcard()
 
+
     # 更新錯題集文件
     def update_mistake_file(self):
-        mistake_file = self.file_name + "_mistakes.md"
-
-        existing_words = set()
+        
+        mistake_file = self.current_file if self.is_in_review else self.file_name + "_mistakes.md"
+        
         if not os.path.exists(mistake_file):
             with open(mistake_file, "w", encoding="utf-8") as file:
-                file.write("| Word | Translation |\n")
-                file.write("| --- | --- |\n")
+                file.write("| Word | Translation | Mistakes|\n")
+                file.write("| --- | --- | --- |\n")
+        
+        # #get mistake list and times
+        exist_word = {}
+        with open(mistake_file, "r", encoding="utf-8") as file:
+            lines = file.readlines()[2:]
+            for line in lines:
+                if line.strip() == "" or line.startswith("|-") or line.startswith("#"):
+                    continue
+                if "|" in line:
+                    columns = line.strip().split("|")
+                    if len(columns) >= 3:
+                        word = columns[1].strip()
+                        translate=columns[2].strip()
+                        times=columns[3].strip()
+                        exist_word[word] = {"translate":translate,"times":times}
 
-        if os.path.exists(mistake_file):
-            with open(mistake_file, "r", encoding="utf-8") as file:
-                for line in file:
-                    if "|" in line:
-                        columns = line.strip().split("|")
-                        if len(columns) >= 3:
-                            existing_words.add(columns[1].strip())
-
-        with open(mistake_file, "a", encoding="utf-8") as file:
-            for word, translation in self.mistake_buffer.items():
-                if word not in existing_words:
-                    file.write(f"| {word} | {translation} |\n")
-
+        #update mistake list
+        for word, times in self.mistake_buffer.items():
+            if word in exist_word:
+                exist_word[word]["times"] = int(exist_word[word]["times"]) + times
+            else:
+                exist_word[word] = {"translate":self.mistake_buffer_ch[word],"times":times}
+        #write to file
+        with open(mistake_file, "w", encoding="utf-8") as file:
+            file.write("| Word | Translation | Mistakes|\n")
+            file.write("| --- | --- | --- |\n")
+            for word, data in exist_word.items():
+                file.write(f"| {word} | {data['translate']} | {data['times']} |\n")
+        # clear buffer
         self.mistake_buffer.clear()
 
 
-# 主程式
 def main():
     root = tk.Tk()
     VocabularySystem(root)
