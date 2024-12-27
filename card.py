@@ -12,6 +12,7 @@ class VocabularySystem:
 
         # state variables
         self.word_list = []
+        self.probability_weight = [0.1,0.2,0.3,0.4]
         self.current_card = {}
         self.current_file = ""
         self.showing_translation = False
@@ -19,7 +20,7 @@ class VocabularySystem:
         self.mistake_buffer_ch = {}
         self.file_name = ""
         self.is_in_review = False
-        self.buffer_length = 1
+        self.buffer_length = 10
 
         # initial setup
         self.show_main_menu()
@@ -31,21 +32,31 @@ class VocabularySystem:
         try:
             with open(filename, "r", encoding="utf-8") as file:
                 lines = file.readlines()[2:]
+                word_list=[[] for i in range(4)]
                 for line in lines:
                     if line.strip() == "" or line.startswith("| -") or line.startswith("#"):
                         continue
                     if "|" in line:
+                        # print(line)
                         columns = line.strip().split("|")
+                        # print(columns)
+                        # print(columns[3].strip())
                         if len(columns) >= 3:
                             word = columns[1].strip()
                             translation = columns[2].strip()
-                            times=0
-                            if len(columns)==4:
-                                times=columns[3].strip()
-                            words.append({"word": word, "translation": translation, "times":times})
+                            times = int(re.sub(r'\s+', '', columns[3])) if len(columns) >=5 else 0
+
+                            if not self.is_in_review:
+                                word_list[0].append({"word": word, "translation": translation, "times":times})
+                            else:
+                                index_mapping = {(-2, 0): 0, (0, 1): 1, (1, 2): 2, (2, 100): 3}
+                                index = next((idx for r, idx in index_mapping.items() if times in r), 0)
+                                word_list[index].append({"word": word, "translation": translation, "times":times})
+                # word_list.append(words)
+                # print(word_list)
         except Exception as e:
             print(f"Error reading file {filename}: {e}")
-        return words
+        return word_list
 
     # 清除目前畫面
     def clear_window(self):
@@ -90,12 +101,19 @@ class VocabularySystem:
     def show_flashcard(self):
         self.clear_window()
         self.showing_translation = False
-
         if not self.word_list:
             self.show_main_menu()
             return
+        if self.is_in_review:
+            # check if the list is empty
+            index = random.choices(range(len(self.word_list)), weights=self.probability_weight, k=1)[0]
+            while not self.word_list[index]:
+                index = random.choices(range(len(self.word_list)), weights=self.probability_weight, k=1)[0]
+                
+            self.current_card = random.choice(self.word_list[index])
+        else:
+            self.current_card = random.choice(self.word_list[0])
 
-        self.current_card = random.choice(self.word_list)
         self.word_label = tk.Label(
             self.root,
             text=self.current_card["word"],
@@ -125,7 +143,7 @@ class VocabularySystem:
             self.root.bind("<Escape>", lambda event: self.show_main_menu())
             self.root.bind("<Return>", self.toggle_translation_or_next)
 
-    # 切換顯示翻譯或下一張
+    # show translation or next word
     def toggle_translation_or_next(self, event=None):
         if self.showing_translation:
             self.show_flashcard()
@@ -145,10 +163,10 @@ class VocabularySystem:
         if len(self.mistake_buffer) >= self.buffer_length:
             self.update_mistake_file()
 
-        self.show_flashcard()
+        self.toggle_translation_or_next()
 
 
-    # 更新錯題集文件
+    # update review file
     def update_mistake_file(self):
         
         mistake_file = self.current_file if self.is_in_review else self.file_name + "_mistakes.md"
