@@ -32,6 +32,8 @@ class VocabularySystem:
             with open(filename, "r", encoding="utf-8") as file:
                 lines = file.readlines()[2:]
                 for line in lines:
+                    if line.strip() == "" or line.startswith("| -") or line.startswith("#"):
+                        continue
                     if "|" in line:
                         columns = line.strip().split("|")
                         if len(columns) >= 3:
@@ -67,7 +69,7 @@ class VocabularySystem:
                 command=lambda f=file: self.load_wordbook(f)
             ).pack(pady=5)
 
-    # 載入選定的單字本
+    # load corresponding wordbook
     def load_wordbook(self, filename):
         self.file_name = filename[:-3]
         self.word_list = self.parse_md_file(filename)
@@ -84,7 +86,7 @@ class VocabularySystem:
                 fg="red"
             ).pack(pady=10)
 
-    # 顯示單字卡畫面
+    #show flashcard
     def show_flashcard(self):
         self.clear_window()
         self.showing_translation = False
@@ -94,7 +96,6 @@ class VocabularySystem:
             return
 
         self.current_card = random.choice(self.word_list)
-
         self.word_label = tk.Label(
             self.root,
             text=self.current_card["word"],
@@ -115,12 +116,12 @@ class VocabularySystem:
         )
         self.translation_label.pack(pady=10)
         if self.is_in_review:
-            self.root.bind("<Up>",self.add_to_correct_buffer)
-            self.root.bind("<Down>",self.add_to_mistake_buffer)
+            self.root.bind("<Up>",lambda event: self.update_buffer(False, event))
+            self.root.bind("<Down>",lambda event: self.update_buffer(True, event))
             self.root.bind("<Escape>", lambda event: self.show_main_menu())
             self.root.bind("<Return>", self.toggle_translation_or_next)
         else:
-            self.root.bind("<Down>",self.add_to_mistake_buffer)
+            self.root.bind("<Down>",lambda event: self.update_buffer(True, event))
             self.root.bind("<Escape>", lambda event: self.show_main_menu())
             self.root.bind("<Return>", self.toggle_translation_or_next)
 
@@ -133,28 +134,13 @@ class VocabularySystem:
             self.showing_translation = True
 
     # add to mistake times
-    def add_to_mistake_buffer(self, event=None):
+    def update_buffer(self,ans, event=None):
         word = self.current_card["word"]
         self.mistake_buffer_ch[word] = self.current_card["translation"]
         if word not in self.mistake_buffer:
-            self.mistake_buffer[word] = 1
+            self.mistake_buffer[word] = 1* (1 if ans else -1)
         else:
-            self.mistake_buffer[word] += 1
-
-        if len(self.mistake_buffer) >= self.buffer_length:
-            self.update_mistake_file()
-
-        self.show_flashcard()
-    
-    # add to correct times
-    def add_to_correct_buffer(self, event=None):
-        word = self.current_card["word"]
-        self.mistake_buffer_ch[word] = self.current_card["translation"]
-        times=self.current_card["times"]
-        if word not in self.mistake_buffer:
-            self.mistake_buffer[word] = -1
-        else:
-            self.mistake_buffer[word] -= 1
+            self.mistake_buffer[word] += 1 * (1 if ans else -1)
 
         if len(self.mistake_buffer) >= self.buffer_length:
             self.update_mistake_file()
@@ -198,7 +184,8 @@ class VocabularySystem:
             file.write("| Word | Translation | Mistakes|\n")
             file.write("| --- | --- | --- |\n")
             for word, data in exist_word.items():
-                file.write(f"| {word} | {data['translate']} | {data['times']} |\n")
+                if int(data["times"])>-2:
+                    file.write(f"| {word} | {data['translate']} | {data['times']} |\n")
         # clear buffer
         self.mistake_buffer.clear()
 
