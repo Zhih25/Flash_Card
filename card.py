@@ -37,10 +37,7 @@ class VocabularySystem:
                     if line.strip() == "" or line.startswith("| -") or line.startswith("#"):
                         continue
                     if "|" in line:
-                        # print(line)
                         columns = line.strip().split("|")
-                        # print(columns)
-                        # print(columns[3].strip())
                         if len(columns) >= 3:
                             word = columns[1].strip()
                             translation = columns[2].strip()
@@ -52,29 +49,27 @@ class VocabularySystem:
                                 index_mapping = {(-2, 0): 0, (0, 1): 1, (1, 2): 2, (2, 100): 3}
                                 index = next((idx for r, idx in index_mapping.items() if times in r), 0)
                                 word_list[index].append({"word": word, "translation": translation, "times":times})
-                # word_list.append(words)
-                # print(word_list)
         except Exception as e:
             print(f"Error reading file {filename}: {e}")
         return word_list
 
-    # 清除目前畫面
+    # clear window
     def clear_window(self):
         for widget in self.root.winfo_children():
             widget.destroy()
 
-    # 顯示單字本選擇畫面
+    # show main menu
     def show_main_menu(self):
         self.clear_window()
         self.root.bind("<Escape>", lambda event: None)
-        tk.Label(self.root, text="Choose Vocabulary", font=("Arial", 18), bg="lightgray", fg="black").pack(pady=20)
+        tk.Label(self.root, text="Choose Vocabulary Set", font=("Helvetica", 18), bg="white", fg="black").pack(pady=20)
 
         files = [f for f in os.listdir() if f.endswith(".md")]
         for file in files:
             tk.Button(
                 self.root,
                 text=file,
-                font=("Arial", 14),
+                font=("Helvetica", 14),
                 bg="lightgray",
                 fg="black",
                 command=lambda f=file: self.load_wordbook(f)
@@ -92,18 +87,14 @@ class VocabularySystem:
             tk.Label(
                 self.root,
                 text="Empty Vocabulary or Error Format!",
-                font=("Arial", 14),
+                font=("Helvetica", 14),
                 bg="black",
                 fg="red"
             ).pack(pady=10)
 
-    #show flashcard
-    def show_flashcard(self):
-        self.clear_window()
-        self.showing_translation = False
+    def get_a_volcabulary(self):
         if not self.word_list:
-            self.show_main_menu()
-            return
+            return None
         if self.is_in_review:
             # check if the list is empty
             index = random.choices(range(len(self.word_list)), weights=self.probability_weight, k=1)[0]
@@ -113,26 +104,58 @@ class VocabularySystem:
             self.current_card = random.choice(self.word_list[index])
         else:
             self.current_card = random.choice(self.word_list[0])
+        return self.current_card
+    
+    #show flashcard
+    def show_flashcard(self):
+        self.clear_window()
+        self.showing_translation = False
+        self.current_card = self.get_a_volcabulary()
+
+        canvas = tk.Canvas(self.root, width=700, height=160, bg="lightyellow", bd=0, highlightthickness=0)
+        canvas.pack(pady=50)
+        canvas.create_rectangle(10, 10, 690, 150, fill="lightyellow", outline="black", width=2)
 
         self.word_label = tk.Label(
             self.root,
             text=self.current_card["word"],
-            font=("Arial", 24),
-            bg="black",
-            fg="white",
-            wraplength=700,
+            font=("Helvetica", 24),
+            bg="lightyellow",
+            fg="black",
+            wraplength=680,
             justify="center"
         )
-        self.word_label.pack(pady=20)
+        canvas.create_window(350, 80, window=self.word_label)
 
         self.translation_label = tk.Label(
             self.root,
             text="",
-            font=("Arial", 18),
+            font=("Helvetica", 18),
             bg="black",
             fg="white"
         )
         self.translation_label.pack(pady=10)
+        
+        instruction_label = tk.Label(
+            self.root,
+            text="Press Up key if you know, Down key for you don't know, Enter key to Skip.",
+            font=("Helvetica", 12),
+            fg="white",
+            bg="black"
+        )
+        instruction_label.pack(side="bottom", pady=20)
+
+        esc_label = tk.Button(
+            self.root,
+            text="Main Menu",
+            font=("Helvetica", 10),
+            fg="black",
+            bg="black",
+            command=self.show_main_menu
+        )
+        #place the ESC label at the top left
+        esc_label.place(x=10, y=10)
+        
         if self.is_in_review:
             self.root.bind("<Up>",lambda event: self.update_buffer(False, event))
             self.root.bind("<Down>",lambda event: self.update_buffer(True, event))
