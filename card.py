@@ -2,140 +2,170 @@ import tkinter as tk
 import os
 import random
 
-# 初始化全域變數
-word_list = []
-current_card = {}
-current_file = ""
-showing_translation = False  
-mistake_buffer = {}  
-file_name = ""
 
-# 解析 Markdown 文件
-def parse_md_file(filename):
-    words = []
-    try:
-        with open(filename, "r", encoding="utf-8") as file:
-            lines = file.readlines()
-            for line in lines:
-                if line.strip() == "" or line.startswith("|---"):
-                    continue
-                if "|" in line:  # 只處理表格格式的行
-                    columns = line.strip().split("|")
-                    if len(columns) >= 3:
-                        word = columns[1].strip()  # 第一欄為單字
-                        translation = columns[2].strip()  # 第二欄為翻譯
-                        words.append({"word": word, "translation": translation})
-    except Exception as e:
-        print(f"Error reading file {filename}: {e}")
-    return words
+class VocabularySystem:
+    def __init__(self, root):
+        self.root = root                         #window object
+        self.root.title("Vocabulary Flashcards") #window title
+        self.root.geometry("800x400")            #window size
+        self.root.config(bg="black")             #window background color
 
-# 顯示單字本選擇畫面
-def show_main_menu():
-    clear_window()
-    root.bind("<Escape>", lambda event: None)
-    tk.Label(root, text="Choose Vocabulary", font=("Arial", 18), bg="lightgray", fg="black").pack(pady=20)
+        # 狀態變數
+        self.word_list = []
+        self.current_card = {}
+        self.current_file = ""
+        self.showing_translation = False
+        self.mistake_buffer = {}
+        self.file_name = ""
 
-    files = [f for f in os.listdir() if f.endswith(".md")]
-    for file in files:
-        tk.Button(root, text=file, font=("Arial", 14), bg="lightgray", fg="black",
-                  command=lambda f=file: load_wordbook(f)).pack(pady=5)
+        # 初始化主選單
+        self.show_main_menu()
 
-# 載入選定的單字本
-def load_wordbook(filename):
-    global word_list, current_file, file_name 
-    file_name=filename[:-3]
-    word_list = parse_md_file(filename)
-    current_file = filename
-    if word_list:
-        show_flashcard()
-    else:
-        tk.Label(root, text="Empty Vocabulary or Error Format!", font=("Arial", 14), bg="black", fg="red").pack(pady=10)
+    # 解析 Markdown 文件
+    def parse_md_file(self, filename):
+        words = []
+        try:
+            with open(filename, "r", encoding="utf-8") as file:
+                lines = file.readlines()
+                for line in lines:
+                    if line.strip() == "" or line.startswith("|---"):
+                        continue
+                    if "|" in line:
+                        columns = line.strip().split("|")
+                        if len(columns) >= 3:
+                            word = columns[1].strip()
+                            translation = columns[2].strip()
+                            words.append({"word": word, "translation": translation})
+        except Exception as e:
+            print(f"Error reading file {filename}: {e}")
+        return words
 
-# 顯示單字卡畫面
-def show_flashcard():
-    clear_window()
-    global current_card, showing_translation
-    showing_translation = False
+    # 清除目前畫面
+    def clear_window(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
 
-    if not word_list:
-        show_main_menu()
-        return
+    # 顯示單字本選擇畫面
+    def show_main_menu(self):
+        self.clear_window()
+        self.root.bind("<Escape>", lambda event: None)
+        tk.Label(self.root, text="Choose Vocabulary", font=("Arial", 18), bg="lightgray", fg="black").pack(pady=20)
 
-    current_card = random.choice(word_list)
-    global word_label, translation_label
+        files = [f for f in os.listdir() if f.endswith(".md")]
+        for file in files:
+            tk.Button(
+                self.root,
+                text=file,
+                font=("Arial", 14),
+                bg="lightgray",
+                fg="black",
+                command=lambda f=file: self.load_wordbook(f)
+            ).pack(pady=5)
 
-    word_label = tk.Label(root, text=current_card["word"], font=("Arial", 24), bg="black", fg="white",
-                          wraplength=700, justify="center")
-    word_label.pack(pady=20)
+    # 載入選定的單字本
+    def load_wordbook(self, filename):
+        self.file_name = filename[:-3]
+        self.word_list = self.parse_md_file(filename)
+        self.current_file = filename
+        if self.word_list:
+            self.show_flashcard()
+        else:
+            tk.Label(
+                self.root,
+                text="Empty Vocabulary or Error Format!",
+                font=("Arial", 14),
+                bg="black",
+                fg="red"
+            ).pack(pady=10)
 
-    translation_label = tk.Label(root, text="", font=("Arial", 18), bg="black", fg="white")
-    translation_label.pack(pady=10)
+    # 顯示單字卡畫面
+    def show_flashcard(self):
+        self.clear_window()
+        self.showing_translation = False
 
-    root.bind("<space>", add_to_mistake_buffer)
-    root.bind("<Escape>", lambda event: show_main_menu())
-    root.bind("<Return>", toggle_translation_or_next)
+        if not self.word_list:
+            self.show_main_menu()
+            return
 
-# 切換顯示翻譯或下一張
-def toggle_translation_or_next(event=None):
-    global showing_translation, translation_label, current_card
-    if showing_translation:
-        show_flashcard()
-    else:
-        translation_label.config(text=current_card["translation"])
-        showing_translation = True
+        self.current_card = random.choice(self.word_list)
 
-# 新增至緩衝區
-def add_to_mistake_buffer(event=None):
-    global mistake_buffer
-    word = current_card["word"]
-    translation = current_card["translation"]
+        self.word_label = tk.Label(
+            self.root,
+            text=self.current_card["word"],
+            font=("Arial", 24),
+            bg="black",
+            fg="white",
+            wraplength=700,
+            justify="center"
+        )
+        self.word_label.pack(pady=20)
 
-    if word not in mistake_buffer:
-        mistake_buffer[word] = translation
+        self.translation_label = tk.Label(
+            self.root,
+            text="",
+            font=("Arial", 18),
+            bg="black",
+            fg="white"
+        )
+        self.translation_label.pack(pady=10)
 
-    if len(mistake_buffer) >= 5:
-        update_mistake_file()
-    
-    show_flashcard()
+        self.root.bind("<space>", self.add_to_mistake_buffer)
+        self.root.bind("<Escape>", lambda event: self.show_main_menu())
+        self.root.bind("<Return>", self.toggle_translation_or_next)
 
-# 更新錯題集文件
-def update_mistake_file():
-    global mistake_buffer, file_name
-    mistake_file = file_name+"_mistakes.md"
+    # 切換顯示翻譯或下一張
+    def toggle_translation_or_next(self, event=None):
+        if self.showing_translation:
+            self.show_flashcard()
+        else:
+            self.translation_label.config(text=self.current_card["translation"])
+            self.showing_translation = True
 
-    existing_words = set()
-    if not os.path.exists(mistake_file):
-        with open(mistake_file, "w", encoding="utf-8") as file:
-            file.write("| Word | Translation |\n")
-            file.write("| --- | --- |\n")
-    if os.path.exists(mistake_file):
-        with open(mistake_file, "r", encoding="utf-8") as file:
-            for line in file:
-                if "|" in line:
-                    columns = line.strip().split("|")
-                    if len(columns) >= 3:
-                        existing_words.add(columns[1].strip())
+    # 新增至緩衝區
+    def add_to_mistake_buffer(self, event=None):
+        word = self.current_card["word"]
+        translation = self.current_card["translation"]
 
-    with open(mistake_file, "a", encoding="utf-8") as file:
-        for word, translation in mistake_buffer.items():
-            if word not in existing_words:
-                file.write(f"| {word} | {translation} |\n")
+        if word not in self.mistake_buffer:
+            self.mistake_buffer[word] = translation
 
-    mistake_buffer.clear()
+        if len(self.mistake_buffer) >= 5:
+            self.update_mistake_file()
 
-# 清除目前畫面
-def clear_window():
-    for widget in root.winfo_children():
-        widget.destroy()
+        self.show_flashcard()
 
-# 建立主視窗
-root = tk.Tk()
-root.title("Card")
-root.geometry("800x400")
-root.config(bg="black")
+    # 更新錯題集文件
+    def update_mistake_file(self):
+        mistake_file = self.file_name + "_mistakes.md"
 
-# 顯示主選單
-show_main_menu()
+        existing_words = set()
+        if not os.path.exists(mistake_file):
+            with open(mistake_file, "w", encoding="utf-8") as file:
+                file.write("| Word | Translation |\n")
+                file.write("| --- | --- |\n")
 
-# 啟動主迴圈
-root.mainloop()
+        if os.path.exists(mistake_file):
+            with open(mistake_file, "r", encoding="utf-8") as file:
+                for line in file:
+                    if "|" in line:
+                        columns = line.strip().split("|")
+                        if len(columns) >= 3:
+                            existing_words.add(columns[1].strip())
+
+        with open(mistake_file, "a", encoding="utf-8") as file:
+            for word, translation in self.mistake_buffer.items():
+                if word not in existing_words:
+                    file.write(f"| {word} | {translation} |\n")
+
+        self.mistake_buffer.clear()
+
+
+# 主程式
+def main():
+    root = tk.Tk()
+    VocabularySystem(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
