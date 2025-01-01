@@ -20,7 +20,8 @@ class VocabularySystem:
         self.mistake_buffer_ch = {}
         self.file_name = ""
         self.is_in_review = False
-        self.buffer_length = 10
+        self.update_threshold = 5
+        self.update_cnt =0
 
         # initial setup
         self.show_main_menu()
@@ -32,7 +33,7 @@ class VocabularySystem:
         try:
             with open(filename, "r", encoding="utf-8") as file:
                 lines = file.readlines()[2:]
-                word_list=[[] for i in range(4)]
+                word_list=[{} for i in range(4)]
                 for line in lines:
                     if line.strip() == "" or line.startswith("| -") or line.startswith("#"):
                         continue
@@ -44,11 +45,12 @@ class VocabularySystem:
                             times = int(re.sub(r'\s+', '', columns[3])) if len(columns) >=5 else 0
 
                             if not self.is_in_review:
-                                word_list[0].append({"word": word, "translation": translation, "times":times})
+                                # word_list[0].append({"word": word, "translation": translation, "times":times})
+                                word_list[0][word]= {"word": word, "translation": translation, "times":times}
                             else:
-                                index_mapping = {(-2, 0): 0, (0, 1): 1, (1, 2): 2, (2, 100): 3}
-                                index = next((idx for r, idx in index_mapping.items() if times in r), 0)
-                                word_list[index].append({"word": word, "translation": translation, "times":times})
+                                index = self.get_index(times)
+                                # word_list[index].append({"word": word, "translation": translation, "times":times})
+                                word_list[index][word]= {"word": word, "translation": translation, "times":times}
         except Exception as e:
             print(f"Error reading file {filename}: {e}")
         return word_list
@@ -57,6 +59,16 @@ class VocabularySystem:
     def clear_window(self):
         for widget in self.root.winfo_children():
             widget.destroy()
+
+    #  get index
+    def get_index(self, times):
+        index_mapping = {
+            range(-2, 0): 0,   # times in [-2, -1]
+            range(0, 2): 1,    # times in [0]
+            range(2, 4): 2,    # times in [1]
+            range(4, 101): 3   # times in [2, 100]
+        }
+        return next((idx for r, idx in index_mapping.items() if times in r), -1)
 
     # show main menu
     def show_main_menu(self):
@@ -98,12 +110,14 @@ class VocabularySystem:
         if self.is_in_review:
             # check if the list is empty
             index = random.choices(range(len(self.word_list)), weights=self.probability_weight, k=1)[0]
-            while not self.word_list[index]:
+            while len(self.word_list[index]) == 0:
                 index = random.choices(range(len(self.word_list)), weights=self.probability_weight, k=1)[0]
-                
-            self.current_card = random.choice(self.word_list[index])
+
+            # self.current_card = random.choice(self.word_list[index])
+            self.current_card = random.choice(list(self.word_list[index].values()))
         else:
-            self.current_card = random.choice(self.word_list[0])
+            # self.current_card = random.choice(self.word_list[0])
+            self.current_card = random.choice(list(self.word_list[0].values()))
         return self.current_card
     
     #show flashcard
@@ -162,6 +176,7 @@ class VocabularySystem:
             self.root.bind("<Escape>", lambda event: self.show_main_menu())
             self.root.bind("<Return>", self.toggle_translation_or_next)
         else:
+            self.root.bind("<Up>", self.toggle_translation_or_next)
             self.root.bind("<Down>",lambda event: self.update_buffer(True, event))
             self.root.bind("<Escape>", lambda event: self.show_main_menu())
             self.root.bind("<Return>", self.toggle_translation_or_next)
@@ -174,8 +189,23 @@ class VocabularySystem:
             self.translation_label.config(text=self.current_card["translation"])
             self.showing_translation = True
 
+    def update_list(self, ans):
+        word = self.current_card["word"]
+        for i in range(4):
+            if word in self.word_list[i]:
+                del self.word_list[i][word]
+
+        self.current_card["times"] += 1 if ans else -1
+        index = self.get_index(self.current_card["times"])
+        if index != -1:
+            self.word_list[index][word] = self.current_card
+
     # add to mistake times
     def update_buffer(self,ans, event=None):
+        if self.is_in_review:
+            self.update_list(ans)
+        self.update_cnt += 1
+        print(self.update_cnt)
         word = self.current_card["word"]
         self.mistake_buffer_ch[word] = self.current_card["translation"]
         if word not in self.mistake_buffer:
@@ -183,7 +213,7 @@ class VocabularySystem:
         else:
             self.mistake_buffer[word] += 1 * (1 if ans else -1)
 
-        if len(self.mistake_buffer) >= self.buffer_length:
+        if self.update_cnt >= self.update_threshold:
             self.update_mistake_file()
 
         self.toggle_translation_or_next()
@@ -229,7 +259,7 @@ class VocabularySystem:
                     file.write(f"| {word} | {data['translate']} | {data['times']} |\n")
         # clear buffer
         self.mistake_buffer.clear()
-
+        self.update_cnt = 0
 
 def main():
     root = tk.Tk()
